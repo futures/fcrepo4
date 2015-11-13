@@ -101,7 +101,14 @@ public class RootRdfContext extends NodeRdfContext {
                     createTypedLiteral(counters.get(PREFIX + FIXITY_REPAIRED_COUNTER).getCount()).asNode()));
         }
 
+        //add project description triples here
+        final BuildPropertiesLoader buildLoader = new BuildPropertiesLoader();
+        LOGGER.info("The value for build.name is {}", buildLoader.getBuildName());
+        LOGGER.info("The value for build.date is {}", buildLoader.getBuildDate());
+        LOGGER.info("The value for build.revision is {}", buildLoader.getBuildRevision());
+
         // offer all these accumulated triples
         concat(b.build());
+
     }
 }

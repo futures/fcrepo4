@@ -240,6 +240,7 @@
     <resources>
       <resource>
         <directory>src/main/resources</directory>
+        <filtering>true</filtering>
       </resource>
       <resource>
         <directory>${project.build.directory}/maven-shared-archive-resources</directory>
