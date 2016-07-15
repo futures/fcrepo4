@@ -23,6 +23,7 @@ import com.hp.hpl.jena.rdf.model.Property;
 import com.hp.hpl.jena.rdf.model.Resource;
 
 import org.fcrepo.kernel.api.exception.FedoraInvalidNamespaceException;
+import org.fcrepo.kernel.api.exception.RepositoryRuntimeException;
 import org.modeshape.jcr.api.NamespaceRegistry;
 import org.modeshape.jcr.api.Namespaced;
 import org.slf4j.Logger;
@@ -133,6 +134,12 @@ public class PropertyConverter extends Converter<javax.jcr.Property, Property> {
 
         final String rdfLocalname = predicate.getLocalName();
 
+        if (rdfLocalname.isEmpty()) {
+          LOGGER.warn("predicate {} local name is empty", predicate);
+          throw new RepositoryRuntimeException(
+              "Illegal predicate local name: The localName argument may not be empty or starting with digit: "
+              + predicate.toString());
+        }
         final String prefix;
 
         assert (namespaceRegistry != null);
