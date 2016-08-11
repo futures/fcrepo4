@@ -17,14 +17,15 @@
  */
 package org.fcrepo.kernel.modeshape.rdf.converters;
 
-import com.google.common.base.Converter;
 import com.google.common.base.Splitter;
 import com.hp.hpl.jena.datatypes.RDFDatatype;
 import com.hp.hpl.jena.rdf.model.Literal;
 import com.hp.hpl.jena.rdf.model.RDFNode;
 import com.hp.hpl.jena.rdf.model.Resource;
-import org.fcrepo.kernel.api.models.FedoraResource;
 import org.fcrepo.kernel.api.exception.RepositoryRuntimeException;
+import org.fcrepo.kernel.api.functions.Converter;
+import org.fcrepo.kernel.api.functions.InjectiveConverter;
+import org.fcrepo.kernel.modeshape.identifiers.InternalPathToNodeConverter;
 import org.slf4j.Logger;
 
 import javax.jcr.AccessDeniedException;
@@ -54,14 +55,13 @@ import static javax.jcr.PropertyType.UNDEFINED;
 import static javax.jcr.PropertyType.URI;
 import static javax.jcr.PropertyType.WEAKREFERENCE;
 import static org.fcrepo.kernel.api.RdfLexicon.INACCESSIBLE_RESOURCE;
-import static org.fcrepo.kernel.modeshape.identifiers.NodeResourceConverter.nodeToResource;
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
  * @author cabeer
  * @since 10/8/14
  */
-public class ValueConverter extends Converter<Value, RDFNode> {
+public class ValueConverter implements InjectiveConverter<Value, RDFNode> {
 
     private static final Logger LOGGER = getLogger(ValueConverter.class);
 
@@ -74,13 +74,14 @@ public class ValueConverter extends Converter<Value, RDFNode> {
      * @param graphSubjects the graph subjects
      */
     public ValueConverter(final Session session,
-                          final Converter<Resource, FedoraResource> graphSubjects) {
+                          final Converter<Resource, String> graphSubjects) {
         this.session = session;
-        this.graphSubjects = nodeToResource(graphSubjects);
+        this.graphSubjects = graphSubjects
+                .andThen(new InternalPathToNodeConverter(session)).reverse();
     }
 
     @Override
-    protected RDFNode doForward(final Value value) {
+    public RDFNode apply(final Value value) {
         try {
             switch (value.getType()) {
                 case BOOLEAN:
@@ -108,7 +109,7 @@ public class ValueConverter extends Converter<Value, RDFNode> {
     }
 
     @Override
-    protected Value doBackward(final RDFNode resource) {
+    public Value toDomain(final RDFNode resource) {
 
         try {
 
@@ -187,7 +188,7 @@ public class ValueConverter extends Converter<Value, RDFNode> {
     }
 
     private RDFNode getGraphSubject(final javax.jcr.Node n) {
-        return graphSubjects.convert(n);
+        return graphSubjects.apply(n);
     }
 
     protected static class RdfLiteralJcrValueBuilder {
@@ -289,5 +290,10 @@ public class ValueConverter extends Converter<Value, RDFNode> {
         public boolean isResource() {
             return hasDatatypeUri() && datatypeUri.equals("URI");
         }
+    }
+
+    @Override
+    public boolean inDomain(final Value a) {
+        return a != null;
     }
 }

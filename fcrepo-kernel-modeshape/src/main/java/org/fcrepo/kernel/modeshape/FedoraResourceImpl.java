@@ -43,16 +43,14 @@ import static org.fcrepo.kernel.api.RequiredRdfContext.SERVER_MANAGED;
 import static org.fcrepo.kernel.api.RequiredRdfContext.VERSIONS;
 import static org.fcrepo.kernel.modeshape.FedoraJcrConstants.JCR_CREATED;
 import static org.fcrepo.kernel.modeshape.FedoraJcrConstants.JCR_LASTMODIFIED;
-import static org.fcrepo.kernel.modeshape.FedoraJcrConstants.FROZEN_MIXIN_TYPES;
-import static org.fcrepo.kernel.modeshape.FedoraJcrConstants.ROOT;
 import static org.fcrepo.kernel.modeshape.identifiers.NodeResourceConverter.nodeConverter;
 import static org.fcrepo.kernel.modeshape.rdf.JcrRdfTools.getRDFNamespaceForJcrNamespace;
-import static org.fcrepo.kernel.modeshape.services.functions.JcrPropertyFunctions.isFrozen;
 import static org.fcrepo.kernel.modeshape.services.functions.JcrPropertyFunctions.property2values;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.getContainingNode;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.getJcrNode;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.hasInternalNamespace;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.isFrozenNode;
+import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.isFrozenResource;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.isInternalNode;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.ldpInsertedContentProperty;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.resourceToProperty;
@@ -93,7 +91,6 @@ import javax.jcr.version.VersionHistory;
 import javax.jcr.NamespaceRegistry;
 import javax.jcr.version.VersionManager;
 
-import com.google.common.base.Converter;
 import com.google.common.collect.ImmutableMap;
 import com.hp.hpl.jena.rdf.model.Resource;
 import com.hp.hpl.jena.graph.Triple;
@@ -106,7 +103,9 @@ import org.fcrepo.kernel.api.exception.InvalidPrefixException;
 import org.fcrepo.kernel.api.exception.MalformedRdfException;
 import org.fcrepo.kernel.api.exception.PathNotFoundRuntimeException;
 import org.fcrepo.kernel.api.exception.RepositoryRuntimeException;
-import org.fcrepo.kernel.api.identifiers.IdentifierConverter;
+import org.fcrepo.kernel.api.functions.Converter;
+import org.fcrepo.kernel.api.functions.InjectiveConverter;
+import org.fcrepo.kernel.modeshape.identifiers.InternalPathToNodeConverter;
 import org.fcrepo.kernel.modeshape.rdf.converters.PropertyConverter;
 import org.fcrepo.kernel.api.TripleCategory;
 import org.fcrepo.kernel.api.RdfStream;
@@ -163,7 +162,7 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
 
     // A curried type accepting resource, translator, and "minimality", returning triples.
     private static interface RdfGenerator extends Function<FedoraResource,
-    Function<IdentifierConverter<Resource, FedoraResource>, Function<Boolean, Stream<Triple>>>> {}
+    Function<Converter<Resource, String>, Function<Boolean, Stream<Triple>>>> {}
 
     @SuppressWarnings("resource")
     private static RdfGenerator getDefaultTriples = resource -> translator -> uncheck(minimal -> {
@@ -301,7 +300,7 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
     private Stream<FedoraResource> nodeToGoodChildren(final Node input) throws RepositoryException {
         return iteratorToStream(input.getNodes()).filter(nastyChildren.negate())
             .flatMap(uncheck((final Node child) -> child.isNodeType(FEDORA_PAIRTREE) ? nodeToGoodChildren(child) :
-                        of(nodeToObjectBinaryConverter.convert(child))));
+                        of(nodeToObjectBinaryConverter.apply(child))));
     }
 
     /**
@@ -319,17 +318,22 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
                     .or(UncheckedPredicate.uncheck(p -> p.getName().equals(JCR_CONTENT)))
                     .or(UncheckedPredicate.uncheck(p -> p.getName().equals("#")));
 
-    private static final Converter<FedoraResource, FedoraResource> datastreamToBinary
-            = new Converter<FedoraResource, FedoraResource>() {
+    private static final InjectiveConverter<FedoraResource, FedoraResource> datastreamToBinary
+            = new InjectiveConverter<FedoraResource, FedoraResource>() {
 
         @Override
-        protected FedoraResource doForward(final FedoraResource fedoraResource) {
+        public FedoraResource apply(final FedoraResource fedoraResource) {
             return fedoraResource.getDescribedResource();
         }
 
         @Override
-        protected FedoraResource doBackward(final FedoraResource fedoraResource) {
+        public FedoraResource toDomain(final FedoraResource fedoraResource) {
             return fedoraResource.getDescription();
+        }
+
+        @Override
+        public boolean inDomain(final FedoraResource a) {
+            return a != null;
         }
     };
 
@@ -338,13 +342,13 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
 
     @Override
     public FedoraResource getContainer() {
-        return getContainingNode(getNode()).map(nodeConverter::convert).orElse(null);
+        return getContainingNode(getNode()).map(nodeConverter::apply).orElse(null);
     }
 
     @Override
     public FedoraResource getChild(final String relPath) {
         try {
-            return nodeConverter.convert(getNode().getNode(relPath));
+            return nodeConverter.apply(getNode().getNode(relPath));
         } catch (final RepositoryException e) {
             throw new RepositoryRuntimeException(e);
         }
@@ -509,19 +513,7 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
 
     @Override
     public boolean hasType(final String type) {
-        try {
-            if (type.equals(FEDORA_REPOSITORY_ROOT)) {
-                return node.isNodeType(ROOT);
-            } else if (isFrozen.test(node) && hasProperty(FROZEN_MIXIN_TYPES)) {
-                return property2values.apply(getProperty(FROZEN_MIXIN_TYPES)).map(uncheck(Value::getString))
-                    .anyMatch(type::equals);
-            }
-            return node.isNodeType(type);
-        } catch (final PathNotFoundException e) {
-            throw new PathNotFoundRuntimeException(e);
-        } catch (final RepositoryException e) {
-            throw new RepositoryRuntimeException(e);
-        }
+        return FedoraTypesUtils.typePredicate(type).test(node);
     }
 
     @Override
@@ -572,14 +564,16 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
      *     (org.fcrepo.kernel.api.identifiers.IdentifierConverter, java.lang.String, RdfStream)
      */
     @Override
-    public void updateProperties(final IdentifierConverter<Resource, FedoraResource> idTranslator,
+    public void updateProperties(final Converter<Resource, String> idTranslator,
                                  final String sparqlUpdateStatement, final RdfStream originalTriples)
             throws MalformedRdfException, AccessDeniedException {
 
         final Model model = originalTriples.collect(toModel());
 
+        final Resource resourceSubject = asUri(idTranslator);
+
         final UpdateRequest request = create(sparqlUpdateStatement,
-                idTranslator.reverse().convert(this).toString());
+                resourceSubject.toString());
 
         final Collection<IllegalArgumentException> errors = checkInvalidPredicates(request);
 
@@ -607,7 +601,7 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
         }
 
         final JcrPropertyStatementListener listener = new JcrPropertyStatementListener(
-                idTranslator, getSession(), idTranslator.reverse().convert(this).asNode());
+                idTranslator, getSession(), resourceSubject.asNode());
 
         model.register(listener);
 
@@ -637,16 +631,19 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
     }
 
     @Override
-    public RdfStream getTriples(final IdentifierConverter<Resource, FedoraResource> idTranslator,
+    public RdfStream getTriples(final Converter<Resource, String> idTranslator,
                                 final TripleCategory context) {
         return getTriples(idTranslator, singleton(context));
     }
 
     @Override
-    public RdfStream getTriples(final IdentifierConverter<Resource, FedoraResource> idTranslator,
+    public RdfStream getTriples(final Converter<Resource, String> idTranslator,
                                 final Set<? extends TripleCategory> contexts) {
 
-        return new DefaultRdfStream(idTranslator.reverse().convert(this).asNode(), contexts.stream()
+        final Converter<Resource, Node> toNodes =
+                idTranslator.andThen(new InternalPathToNodeConverter(getSession()));
+        //final Converter<Resource, FedoraResource> toResources = toNodes.andThen(NodeResourceConverter.nodeConverter);
+        return new DefaultRdfStream(toNodes.reverse().apply(getNode()).asNode(), contexts.stream()
                 .filter(contextMap::containsKey)
                 .map(x -> contextMap.get(x).apply(this).apply(idTranslator).apply(contexts.contains(MINIMAL)))
                 .reduce(empty(), Stream::concat));
@@ -691,11 +688,11 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
      *     (org.fcrepo.kernel.api.identifiers.IdentifierConverter, com.hp.hpl.jena.rdf.model.Model)
      */
     @Override
-    public void replaceProperties(final IdentifierConverter<Resource, FedoraResource> idTranslator,
+    public void replaceProperties(final Converter<Resource, String> idTranslator,
         final Model inputModel, final RdfStream originalTriples) throws MalformedRdfException {
 
         try (final RdfStream replacementStream =
-                new DefaultRdfStream(idTranslator.reverse().convert(this).asNode())) {
+                new DefaultRdfStream(this.asUri(idTranslator).asNode())) {
 
             final GraphDifferencer differencer =
                 new GraphDifferencer(inputModel, originalTriples);
@@ -810,8 +807,12 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
 
     }
 
-    @Override
-    public boolean isVersioned() {
+    /**
+     * Check the input node to see if it includes the versionable mixin
+     * @param node the node to test
+     * @return whether or not the node includes the versionable mixin
+     */
+    public static boolean isVersioned(final Node node) {
         try {
             return node.isNodeType("mix:versionable");
         } catch (final RepositoryException e) {
@@ -820,8 +821,13 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
     }
 
     @Override
+    public boolean isVersioned() {
+        return isVersioned(node);
+    }
+
+    @Override
     public boolean isFrozenResource() {
-        return isFrozenNode.test(this);
+        return isFrozenResource.test(this);
     }
 
     @Override
@@ -850,6 +856,41 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
             }
 
             return new FedoraResourceImpl(versionableFrozenNode);
+        } catch (final RepositoryException e) {
+            throw new RepositoryRuntimeException(e);
+        }
+
+    }
+
+    /**
+     * @param node a node
+     * @return its closest versioned ancestor
+     */
+    public static Node getVersionedAncestor(final Node node) {
+
+        try {
+            if (!isFrozenNode.test(node)) {
+                return null;
+            }
+
+            Node versionableFrozenNode = node;
+            Node unfrozenNode = getUnfrozenNode(node);
+
+            // traverse the frozen tree looking for a node whose unfrozen equivalent is versioned
+            while (!isVersioned(unfrozenNode)) {
+
+                if (versionableFrozenNode.getDepth() == 0) {
+                    return null;
+                }
+
+                // node in the frozen tree
+                versionableFrozenNode = versionableFrozenNode.getParent();
+
+                // unfrozen equivalent
+                unfrozenNode = getUnfrozenNode(versionableFrozenNode);
+            }
+
+            return versionableFrozenNode;
         } catch (final RepositoryException e) {
             throw new RepositoryRuntimeException(e);
         }
@@ -891,6 +932,48 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
         }
     }
 
+    /**
+     *
+     * @param node a node
+     * @return the unfrozen node corresponding to it
+     */
+    public static Node getUnfrozenNode(final Node node) {
+        if (!FedoraTypesUtils.isFrozenNode.test(node)) {
+            return node;
+        }
+
+        try {
+            final Session session = node.getSession();
+            // Either this resource is frozen
+            if (node.hasProperty(JCR_FROZEN_UUID)) {
+                try {
+                    return getNodeByProperty(session, node.getProperty(JCR_FROZEN_UUID));
+                } catch (final ItemNotFoundException e) {
+                    // The unfrozen resource has been deleted, return the tombstone.
+                    return node;
+                }
+
+                // ..Or it is a child-version-history on a frozen path
+            } else if (node.hasProperty(JCR_CHILD_VERSION_HISTORY)) {
+                final Node childVersionHistory = getNodeByProperty(session,
+                        node.getProperty(JCR_CHILD_VERSION_HISTORY));
+                try {
+                    return getNodeByProperty(
+                            session,
+                            childVersionHistory.getProperty(JCR_VERSIONABLE_UUID));
+                } catch (final ItemNotFoundException e) {
+                    // The unfrozen resource has been deleted, return the tombstone.
+                    return childVersionHistory;
+                }
+
+            } else {
+                throw new RepositoryRuntimeException("Resource must be frozen or a child-history!");
+            }
+        } catch (final RepositoryException e) {
+            throw new RepositoryRuntimeException(e);
+        }
+    }
+
     @Override
     public FedoraResource getVersion(final String label) {
         try {
@@ -919,25 +1002,38 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
 
     @Override
     public String getVersionLabelOfFrozenResource() {
-        if (!isFrozenResource()) {
+        return getVersionLabelOfFrozenResource(node);
+    }
+
+    /**
+     *
+     * @param node a node
+     * @return the version label for its frozen resource
+     */
+    public static String getVersionLabelOfFrozenResource(final Node node) {
+        if (!isFrozenNode.test(node)) {
             return null;
         }
-
-        // Version History associated with this resource
-        final VersionHistory versionHistory = getUnfrozenResource().getVersionHistory();
 
         // Frozen node is required to find associated version label
         final Node frozenResource;
         try {
+            final VersionManager versionManager = getVersionManager(node);
+            // Version History associated with this resource
+            final VersionHistory versionHistory = versionManager.getVersionHistory(getUnfrozenNode(node).getPath());
+
+            final Session session = node.getSession();
             // Possibly the frozen node is nested inside of current child-version-history
-            if (getNode().hasProperty(JCR_CHILD_VERSION_HISTORY)) {
-                final Node childVersionHistory = getNodeByProperty(getProperty(JCR_CHILD_VERSION_HISTORY));
-                final Node childNode = getNodeByProperty(childVersionHistory.getProperty(JCR_VERSIONABLE_UUID));
-                final Version childVersion = getVersionManager().getBaseVersion(childNode.getPath());
+            if (node.hasProperty(JCR_CHILD_VERSION_HISTORY)) {
+                final Node childVersionHistory =
+                        getNodeByProperty(session, node.getProperty(JCR_CHILD_VERSION_HISTORY));
+                final Node childNode =
+                        getNodeByProperty(session, childVersionHistory.getProperty(JCR_VERSIONABLE_UUID));
+                final Version childVersion = versionManager.getBaseVersion(childNode.getPath());
                 frozenResource = childVersion.getFrozenNode();
 
             } else {
-                frozenResource = getNode();
+                frozenResource = node;
             }
 
             // Loop versions
@@ -953,13 +1049,27 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
         }
     }
 
+    @Override
+    public Resource asUri(final Converter<Resource, String> idTranslator) {
+        return new InternalPathToNodeConverter(getSession()).reverse().andThen(idTranslator.reverse()).apply(
+                getNode());
+    }
+
     private Node getNodeByProperty(final Property property) throws RepositoryException {
         return getSession().getNodeByIdentifier(property.getString());
     }
 
+    private static Node getNodeByProperty(final Session session, final Property property) throws RepositoryException {
+        return session.getNodeByIdentifier(property.getString());
+    }
+
     protected VersionManager getVersionManager() {
+        return getVersionManager(getNode());
+    }
+
+    protected static VersionManager getVersionManager(final Node node) {
         try {
-            return getSession().getWorkspace().getVersionManager();
+            return node.getSession().getWorkspace().getVersionManager();
         } catch (final RepositoryException e) {
             throw new RepositoryRuntimeException(e);
         }
@@ -1071,7 +1181,7 @@ public class FedoraResourceImpl extends JcrTools implements FedoraTypes, FedoraR
                                                       final Converter<Node, Resource> translator) {
         return t -> {
             if (t.getPredicate().toString().equals(LAST_MODIFIED_DATE.toString())
-                    && t.getSubject().equals(translator.convert(getJcrNode(r)).asNode())) {
+                    && t.getSubject().equals(translator.apply(getJcrNode(r)).asNode())) {
                 final Calendar c = Calendar.getInstance();
                 c.setTime(r.getLastModifiedDate());
                 return new Triple(t.getSubject(), t.getPredicate(), createTypedLiteral(c).asNode());

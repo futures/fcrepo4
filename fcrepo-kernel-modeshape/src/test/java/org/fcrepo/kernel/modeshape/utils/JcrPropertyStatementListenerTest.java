@@ -21,6 +21,7 @@ import static com.hp.hpl.jena.rdf.model.ModelFactory.createDefaultModel;
 import static com.hp.hpl.jena.vocabulary.RDF.type;
 import static javax.jcr.PropertyType.URI;
 import static org.fcrepo.kernel.api.RdfLexicon.REPOSITORY_NAMESPACE;
+import static org.fcrepo.kernel.modeshape.identifiers.NodeResourceConverter.nodeConverter;
 import static org.fcrepo.kernel.modeshape.utils.FedoraTypesUtils.getPropertyType;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -43,8 +44,9 @@ import com.hp.hpl.jena.vocabulary.RDF;
 
 import org.fcrepo.kernel.api.models.FedoraResource;
 import org.fcrepo.kernel.api.exception.RepositoryRuntimeException;
-import org.fcrepo.kernel.api.identifiers.IdentifierConverter;
+import org.fcrepo.kernel.api.functions.Converter;
 import org.fcrepo.kernel.modeshape.rdf.impl.DefaultIdentifierTranslator;
+import org.fcrepo.kernel.modeshape.identifiers.PathToNodeConverter;
 import org.fcrepo.kernel.modeshape.rdf.JcrRdfTools;
 
 import org.junit.Before;
@@ -80,7 +82,9 @@ public class JcrPropertyStatementListenerTest {
     @Mock
     private Session mockSession;
 
-    private IdentifierConverter<Resource, FedoraResource> idTranslator;
+    DefaultIdentifierTranslator idTranslator;
+
+    private Converter<Resource, FedoraResource> resourceTranslator;
 
     @Mock
     private Statement mockStatement;
@@ -129,7 +133,8 @@ public class JcrPropertyStatementListenerTest {
     public void setUp() throws RepositoryException {
         initMocks(this);
 
-        idTranslator = new DefaultIdentifierTranslator(mockSession);
+        idTranslator = new DefaultIdentifierTranslator();
+        resourceTranslator = idTranslator.andThen(new PathToNodeConverter(mockSession).andThen(nodeConverter));
         when(mockNode.getSession()).thenReturn(mockSession);
         testObj = new JcrPropertyStatementListener(idTranslator, mockJcrRdfTools, mockTopic);
         mockResource = idTranslator.toDomain("/xyz");
@@ -146,8 +151,8 @@ public class JcrPropertyStatementListenerTest {
         when(mockIrrelevantStatement.getObject()).thenReturn(mockValue);
 
         when(mockModel.getNsPrefixMap()).thenReturn(mockNsMapping);
-        resource = idTranslator.convert(mockResource);
-        when(mockJcrRdfTools.skolemize(idTranslator, mockStatement)).thenReturn(mockStatement);
+        resource = resourceTranslator.apply(mockResource);
+        when(mockJcrRdfTools.skolemize(mockStatement)).thenReturn(mockStatement);
     }
 
     @Test
@@ -215,7 +220,7 @@ public class JcrPropertyStatementListenerTest {
                 + "object");
         final Statement statement = model.createStatement(mockResource, RDF.type, type);
         when(mockSubjectNode.canAddMixin("fedora:object")).thenReturn(true);
-        when(mockJcrRdfTools.skolemize(idTranslator, statement)).thenReturn(statement);
+        when(mockJcrRdfTools.skolemize(statement)).thenReturn(statement);
         testObj.addedStatement(statement);
         verify(mockJcrRdfTools).addMixin(resource, type, mockNsMapping);
     }
@@ -254,7 +259,7 @@ public class JcrPropertyStatementListenerTest {
                 type,
                 model.createResource(REPOSITORY_NAMESPACE + "Container"));
         when(mockSubjectNode.canAddMixin("fedora:object")).thenReturn(true);
-        when(mockJcrRdfTools.skolemize(idTranslator, statement)).thenReturn(statement);
+        when(mockJcrRdfTools.skolemize(statement)).thenReturn(statement);
         testObj.addedStatement(statement);
         verify(mockSubjectNode, never()).addMixin("fedora:object");
     }

@@ -70,8 +70,7 @@ public class ContainerImplIT extends AbstractIT {
     @Before
     public void setUp() throws RepositoryException {
         session = repo.login();
-        subjects = new DefaultIdentifierTranslator(session);
-
+        subjects = new DefaultIdentifierTranslator();
     }
 
     @Test
@@ -91,7 +90,7 @@ public class ContainerImplIT extends AbstractIT {
             containerService.findOrCreate(session, "/graphObject");
         final Model model = object.getTriples(subjects, PROPERTIES).collect(toModel());
 
-        final Resource graphSubject = subjects.reverse().convert(object);
+        final Resource graphSubject = object.asUri(subjects);
 
         assertFalse("Graph store should not contain JCR prefixes",
                     compile("jcr").matcher(model.toString()).find());
@@ -151,7 +150,7 @@ public class ContainerImplIT extends AbstractIT {
     public void testObjectGraphWithUriProperty() throws RepositoryException {
         final Container object =
             containerService.findOrCreate(session, "/graphObject");
-        final Resource graphSubject = subjects.reverse().convert(object);
+        final Resource graphSubject = object.asUri(subjects);
 
         object.updateProperties(subjects, "PREFIX some: <info:some#>\n" +
                 "INSERT { <" + graphSubject + "> some:urlProperty " +
@@ -218,7 +217,7 @@ public class ContainerImplIT extends AbstractIT {
         final Model model = createDefaultModel().read(
                 toInputStream("<> <info:some-property> <relative-url> . \n" +
                                       "<> <info:some-other-property> <another-relative-url>"),
-                subjects.reverse().convert(object).toString(),
+                object.asUri(subjects).toString(),
                 "TTL");
         MalformedRdfException e = null;
         try {

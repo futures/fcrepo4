@@ -77,7 +77,9 @@ public class BasicReadWriteFedoraFileSystemConnectorIT extends AbstractFedoraFil
             // Write the properties
             try (final DefaultRdfStream originalTriples =
                     new DefaultRdfStream(createURI("info:fedora" + testFilePath()))) {
-                object.updateProperties(new DefaultIdentifierTranslator(session), sparql, originalTriples);
+                object.updateProperties(
+                        new DefaultIdentifierTranslator(),
+                        sparql, originalTriples);
             }
 
             // Verify
@@ -105,7 +107,7 @@ public class BasicReadWriteFedoraFileSystemConnectorIT extends AbstractFedoraFil
                     "'some-property-to-remove' }";
 
             // Write the properties
-            final DefaultIdentifierTranslator graphSubjects = new DefaultIdentifierTranslator(session);
+            final DefaultIdentifierTranslator graphSubjects = new DefaultIdentifierTranslator();
             try (final DefaultRdfStream originalTriples =
                     new DefaultRdfStream(createURI("info:fedora" + testFilePath()))) {
                 object.updateProperties(graphSubjects, sparql, originalTriples);

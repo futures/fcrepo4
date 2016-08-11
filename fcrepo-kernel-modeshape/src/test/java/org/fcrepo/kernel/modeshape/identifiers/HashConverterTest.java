@@ -56,12 +56,12 @@ public class HashConverterTest {
 
     @Test
     public void testDoForward() {
-        assertEquals(internalId, testObj.convert(externalId));
+        assertEquals(internalId, testObj.apply(externalId));
     }
 
     @Test
     public void testDoBackwards() {
-        assertEquals(externalId, testObj.reverse().convert(internalId));
+        assertEquals(externalId, testObj.toDomain(internalId));
     }
 
 }

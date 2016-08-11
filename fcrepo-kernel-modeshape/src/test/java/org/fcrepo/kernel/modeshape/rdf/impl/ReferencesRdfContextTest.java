@@ -36,6 +36,7 @@ import static com.hp.hpl.jena.rdf.model.ResourceFactory.createResource;
 import static javax.jcr.PropertyType.REFERENCE;
 import static javax.jcr.PropertyType.WEAKREFERENCE;
 import static org.fcrepo.kernel.api.RdfCollectors.toModel;
+import static org.fcrepo.kernel.modeshape.utils.TestHelpers.mockResource;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 import static org.mockito.MockitoAnnotations.initMocks;
@@ -81,9 +82,9 @@ public class ReferencesRdfContextTest {
     @Before
     public void setUp() throws RepositoryException {
         initMocks(this);
-        translator = new DefaultIdentifierTranslator(mockSession);
+        translator = new DefaultIdentifierTranslator();
         when(mockResource.getNode()).thenReturn(mockNode);
-        when(mockResource.getPath()).thenReturn("/a");
+        mockResource(mockResource, "/a");
         when(mockNode.getPath()).thenReturn("/a");
         when(mockNode.getSession()).thenReturn(mockSession);
         when(mockSession.getNodeByIdentifier("uuid")).thenReturn(mockNode);

@@ -20,8 +20,10 @@ package org.fcrepo.auth.integration;
 import com.hp.hpl.jena.rdf.model.Resource;
 import org.fcrepo.http.commons.AbstractResource;
 import org.fcrepo.http.commons.api.rdf.HttpResourceConverter;
+import org.fcrepo.kernel.api.functions.InjectiveConverter;
 import org.fcrepo.kernel.api.models.FedoraResource;
-import org.fcrepo.kernel.api.identifiers.IdentifierConverter;
+import org.fcrepo.kernel.modeshape.identifiers.InternalPathToNodeConverter;
+import org.fcrepo.kernel.modeshape.identifiers.NodeResourceConverter;
 import org.modeshape.jcr.api.JcrTools;
 import org.slf4j.Logger;
 import org.springframework.context.annotation.Scope;
@@ -59,14 +61,14 @@ public class RootTestResource extends AbstractResource {
 
     @PUT
     public Response put(@PathParam("path") final String externalPath) throws Exception {
-        final String path = toPath(translator(), externalPath);
+        final String path = translator().apply(translator().toDomain(externalPath));
         LOGGER.trace("PUT: {}", path);
         return doRequest(path);
     }
 
     @POST
     public Response post(@PathParam("path") final String externalPath) throws Exception {
-        final String path = toPath(translator(), externalPath);
+        final String path = translator().apply(translator().toDomain(externalPath));
         LOGGER.trace("POST: {}", path);
         return doRequest(path);
     }
@@ -78,9 +80,16 @@ public class RootTestResource extends AbstractResource {
         return Response.created(location).build();
     }
 
-    protected IdentifierConverter<Resource,FedoraResource> translator() {
-        return new HttpResourceConverter(session,
-                    uriInfo.getBaseUriBuilder().clone().path(RootTestResource.class));
+    @Override
+    protected InjectiveConverter<Resource,String> translator() {
+        return new HttpResourceConverter(session, uriInfo.getBaseUriBuilder().clone().path(RootTestResource.class));
+    }
+
+    @Override
+    protected InjectiveConverter<Resource, FedoraResource> uriToResource() {
+        return translator()
+                .andThen(new InternalPathToNodeConverter(session))
+                .andThen(NodeResourceConverter.nodeConverter);
     }
 
 }

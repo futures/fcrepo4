@@ -26,22 +26,37 @@ import org.fcrepo.kernel.api.identifiers.InternalIdentifierConverter;
 public class HashConverter extends InternalIdentifierConverter {
 
     @Override
-    protected String doForward(final String externalId) {
+    public String apply(final String externalId) {
+        // this is called multiple times, so if the input appears to
+        // have been processed already pass it on unmodified
+        if (!inDomain(externalId)) {
+            return externalId;
+        }
+        String result = externalId;
         final int i = externalId.indexOf('#');
         if (i >= 0) {
-            return externalId.substring(0, i) + "/#/" + externalId.substring(i + 1).replace("/", "%2F");
+            final String sub = (i == 0) ? "#/" : "/#/";
+            result = externalId.substring(0, i) + sub + externalId.substring(i + 1).replace("/", "%2F");
         }
-        return externalId;
+        return result;
+    }
+
+    /**
+     * @return true if the input string has not had a '#' converted into a path segment  '/#/'
+     */
+    @Override
+    public boolean inDomain(final String inputId) {
+        return inputId != null && inputId.indexOf("#/") == -1;
     }
 
     @Override
-    protected String doBackward(final String internalId) {
+    public String toDomain(final String internalId) {
 
         final int i = internalId.indexOf("/#/");
-
+        String result = internalId;
         if (i >= 0) {
-            return internalId.substring(0, i) + "#" + internalId.substring(i + 3).replace("%2F", "/");
+            result = internalId.substring(0, i) + "#" + internalId.substring(i + 3).replace("%2F", "/");
         }
-        return internalId;
+        return result;
     }
 }

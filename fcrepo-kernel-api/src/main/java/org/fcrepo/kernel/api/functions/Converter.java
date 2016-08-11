@@ -24,17 +24,31 @@ package org.fcrepo.kernel.api.functions;
  * @param <A> the type from which we are translating
  * @param <B> the type to which we are translating
  */
-public interface Converter<A, B> extends InvertibleFunction<A, B>, DomainRestrictedFunction<A, B> {
+public interface Converter<A, B> extends ReversibleFunction<A, B>, DomainRestrictedFunction<A, B> {
 
     /**
-     * Whether the value is in the range of this function
-     * @param b a result of the converter function
-     * @return whether b is in the range of the converter
+     * @see org.fcrepo.kernel.api.functions.ReversibleFunction#reverse()
+     * @return a Converter applying the reverse function
      */
-    default boolean inRange(final B b) {
-        return inverse().inDomain(b);
+    @Override
+    public Converter<B, A> reverse();
+
+    /**
+     * @param <C> the range type of the subsequent function
+     * @param after a converter to which this converter provides the domain
+     * @return a composite function
+     */
+    public default <C> Converter<A, C> andThen(final Converter<B, C> after) {
+        return new CompositeConverter<>(this, after);
     }
 
-    @Override
-    Converter<B, A> inverse();
+    /**
+     *
+     * @param <C> the domain type of the previous function
+     * @param before a converter for which the range is this converter's domain
+     * @return a composite function
+     */
+    public default <C> Converter<C, B> compose(final Converter<C, A> before) {
+        return new CompositeConverter<>(before, this);
+    }
 }

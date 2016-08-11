@@ -27,8 +27,8 @@ import javax.ws.rs.core.UriInfo;
 import com.hp.hpl.jena.rdf.model.Resource;
 
 import org.fcrepo.http.commons.session.SessionFactory;
+import org.fcrepo.kernel.api.functions.InjectiveConverter;
 import org.fcrepo.kernel.api.models.FedoraResource;
-import org.fcrepo.kernel.api.identifiers.IdentifierConverter;
 import org.fcrepo.kernel.api.services.BinaryService;
 import org.fcrepo.kernel.api.services.NamespaceService;
 import org.fcrepo.kernel.api.services.NodeService;
@@ -36,6 +36,7 @@ import org.fcrepo.kernel.api.services.ContainerService;
 import org.fcrepo.kernel.api.services.VersionService;
 import org.fcrepo.kernel.api.services.functions.HierarchicalIdentifierSupplier;
 import org.fcrepo.kernel.api.services.functions.UniqueValueSupplier;
+import org.fcrepo.kernel.modeshape.identifiers.InternalPathToNodeConverter;
 
 import org.jvnet.hk2.annotations.Optional;
 
@@ -46,7 +47,7 @@ import com.google.common.eventbus.EventBus;
  *
  * @author ajs6f
  */
-public class AbstractResource {
+public abstract class AbstractResource {
 
     /**
      * Useful for constructing URLs
@@ -106,19 +107,28 @@ public class AbstractResource {
 
     protected UniqueValueSupplier defaultPidMinter = new DefaultPathMinter();
 
+    protected InjectiveConverter<Resource, String> idTranslator;
+
+    protected InjectiveConverter<Resource, FedoraResource> graphToResource;
+
+    protected abstract InjectiveConverter<Resource, String> translator();
+
+    protected abstract InjectiveConverter<Resource, FedoraResource> uriToResource();
+
     /**
-     * Convert a JAX-RS list of PathSegments to a JCR path
-     *
+     * Convert a JAX-RS list of PathSegments to an internal path
+     * TODO This conversion needs stronger typing of external and internal paths to make sense
      * @param idTranslator the id translator
      * @param originalPath the original path
-     * @return String jcr path
+     * @return String internal path
      */
-    public static final String toPath(final IdentifierConverter<Resource, FedoraResource> idTranslator,
+    public static final String toInternalPath(final InjectiveConverter<Resource, String> idTranslator,
                                       final String originalPath) {
 
-        final Resource resource = idTranslator.toDomain(originalPath);
+        final Resource resource =
+                idTranslator.toDomain(InternalPathToNodeConverter.trimSignalSuffixes(originalPath));
 
-        final String path = idTranslator.asString(resource);
+        final String path = idTranslator.apply(resource);
 
         return path.isEmpty() ? "/" : path;
     }

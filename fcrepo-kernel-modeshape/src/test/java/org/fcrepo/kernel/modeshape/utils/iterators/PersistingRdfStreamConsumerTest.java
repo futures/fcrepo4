@@ -39,7 +39,7 @@ import java.util.stream.Stream;
 import javax.jcr.Node;
 import javax.jcr.Session;
 
-import org.fcrepo.kernel.api.identifiers.IdentifierConverter;
+import org.fcrepo.kernel.api.functions.Converter;
 import org.fcrepo.kernel.api.models.FedoraResource;
 import org.fcrepo.kernel.api.RdfStream;
 import org.fcrepo.kernel.api.rdf.DefaultRdfStream;
@@ -106,7 +106,7 @@ public class PersistingRdfStreamConsumerTest {
     @Before
     public void setUp() {
         initMocks(this);
-        idTranslator = new DefaultIdentifierTranslator(mockSession);
+        idTranslator = new DefaultIdentifierTranslator();
     }
 
     private static final Model m = createDefaultModel();
@@ -167,7 +167,7 @@ public class PersistingRdfStreamConsumerTest {
     @Mock
     private Node mockNode;
 
-    private IdentifierConverter<Resource, FedoraResource> idTranslator;
+    private Converter<Resource, String> idTranslator;
 
     @Mock
     private Stream<Triple> mockTriples;

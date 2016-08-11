@@ -35,10 +35,13 @@ import javax.ws.rs.WebApplicationException;
 
 import org.apache.commons.io.IOUtils;
 import org.fcrepo.http.commons.AbstractResource;
+import org.fcrepo.kernel.api.functions.InjectiveConverter;
+import org.fcrepo.kernel.api.models.FedoraResource;
 import org.fcrepo.kernel.api.services.RepositoryService;
 import org.slf4j.Logger;
 import org.springframework.context.annotation.Scope;
 
+import com.hp.hpl.jena.rdf.model.Resource;
 /**
  * Repository-wide backup endpoint
  *
@@ -105,5 +108,17 @@ public class FedoraRepositoryBackup extends AbstractResource {
 
         }
         return backupDirectory.getCanonicalPath();
+    }
+
+    @Override
+    protected InjectiveConverter<Resource, String> translator() {
+        // TODO Auto-generated method stub
+        return null;
+    }
+
+    @Override
+    protected InjectiveConverter<Resource, FedoraResource> uriToResource() {
+        // TODO Auto-generated method stub
+        return null;
     }
 }
